@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Simple Map JSON Generator</title>
+    <title>Bedwars Map JSON Generator</title>
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
         h2 { margin-top: 40px; }
@@ -9,22 +9,16 @@
         label { display: block; margin-top: 5px; }
         input { padding: 5px; margin-bottom: 5px; width: 250px; }
         button { margin-top: 10px; padding: 6px 10px; cursor: pointer; }
-        textarea { width: 100%; height: 400px; font-family: monospace; }
+        textarea { width: 100%; height: 500px; font-family: monospace; }
+        hr { margin: 20px 0; }
     </style>
 </head>
 <body>
 
-<h1>Simple Map JSON Generator</h1>
+<h1>Bedwars Map JSON Generator</h1>
 
-<div class="box">
-    <label>Map Name:</label>
-    <input class="mapName" placeholder="powergrid1" />
-
-    <div class="spawnPointsContainer"></div>
-    <button onclick="addSpawnPoint()">+ Add Spawn Point</button>
-</div>
-
-<button onclick="addMap()">+ Add Another Map</button>
+<div class="mapContainer"></div>
+<button onclick="addMap()">+ Add Map</button>
 <br><br>
 <button onclick="generateJSON()">Generate JSON</button>
 
@@ -32,80 +26,114 @@
 <textarea id="output"></textarea>
 
 <script>
-const container = document.body;
+const container = document.querySelector('.mapContainer');
 
 function addMap() {
     const box = document.createElement('div');
     box.className = 'box';
     box.innerHTML = `
         <label>Map Name:</label>
-        <input class="mapName" placeholder="powergrid1" />
+        <input class="mapName" placeholder="tramble3v3" />
 
-        <div class="spawnPointsContainer"></div>
-        <button onclick="addSpawnPointToBox(this)">+ Add Spawn Point</button>
+        <h3>Spectator Spawn</h3>
+        <input class="specCoords" placeholder="X Y Z" />
+
+        <h3>Generators</h3>
+        <label>Diamond Gens (comma separated, X Y Z per line):</label>
+        <textarea class="diamondGens" placeholder="298 93 210&#10;174 93 210"></textarea>
+        <label>Emerald Gens (comma separated, X Y Z per line):</label>
+        <textarea class="emeraldGens" placeholder="236 93 258&#10;236 92 293"></textarea>
+
+        <h3>Teams</h3>
+        <div class="teamsContainer"></div>
+        <button onclick="addTeam(this)">+ Add Team</button>
     `;
-    container.insertBefore(box, container.querySelector('button[onclick="addMap()"]'));
+    container.appendChild(box);
 }
 
-function addSpawnPoint() {
-    const spawnContainer = document.querySelector('.spawnPointsContainer');
+function addTeam(btn) {
+    const containerDiv = btn.parentElement.querySelector('.teamsContainer');
     const div = document.createElement('div');
+    div.className = 'box';
     div.innerHTML = `
-        <label>Spawn Point Name:</label>
-        <input class="spawnName" placeholder="spawnPoint1" />
-        <label>Coordinates (X Y Z):</label>
-        <input class="coords" placeholder="0 64 0" />
-    `;
-    spawnContainer.appendChild(div);
-}
+        <label>Team Name:</label>
+        <input class="teamName" placeholder="Red" />
 
-function addSpawnPointToBox(btn) {
-    const box = btn.parentElement;
-    const spawnContainer = box.querySelector('.spawnPointsContainer');
-    const div = document.createElement('div');
-    div.innerHTML = `
-        <label>Spawn Point Name:</label>
-        <input class="spawnName" placeholder="spawnPoint1" />
-        <label>Coordinates (X Y Z):</label>
-        <input class="coords" placeholder="0 64 0" />
+        <label>Spawn Point (X Y Z):</label>
+        <input class="teamSpawn" placeholder="0 64 0" />
+
+        <label>Bed Top (X Y Z):</label>
+        <input class="bedTop" placeholder="0 64 0" />
+        <label>Bed Bottom (X Y Z):</label>
+        <input class="bedBottom" placeholder="0 63 0" />
+
+        <label>Team Generator (X Y Z):</label>
+        <input class="teamGen" placeholder="0 64 0" />
+
+        <label>Shop Positions (X Y Z per line):</label>
+        <textarea class="shopPos" placeholder="0 64 0&#10;1 64 0"></textarea>
+
+        <label>Upgrade Positions (X Y Z per line):</label>
+        <textarea class="upgradePos" placeholder="0 64 0&#10;1 64 0"></textarea>
     `;
-    spawnContainer.appendChild(div);
+    containerDiv.appendChild(div);
 }
 
 function parseCoords(str) {
     const parts = str.trim().split(/\s+/).map(Number);
-    return {
-        x: parts[0] || 0,
-        y: parts[1] || 0,
-        z: parts[2] || 0
-    };
+    return { x: parts[0]||0, y: parts[1]||0, z: parts[2]||0 };
+}
+
+function parseMultipleCoords(str) {
+    const lines = str.trim().split('\n');
+    return lines.map(line => parseCoords(line));
 }
 
 function generateJSON() {
-    const boxes = document.querySelectorAll('.box');
+    const maps = document.querySelectorAll('.mapContainer > .box');
     const result = {};
 
-    boxes.forEach(box => {
-        const mapName = box.querySelector('.mapName').value.trim();
-        if (!mapName) return;
+    maps.forEach(map => {
+        const mapName = map.querySelector('.mapName').value.trim();
+        if(!mapName) return;
 
-        const spawns = {};
-        box.querySelectorAll('.spawnPointsContainer div').forEach(spawnDiv => {
-            const spawnName = spawnDiv.querySelector('.spawnName').value.trim();
-            const coords = parseCoords(spawnDiv.querySelector('.coords').value);
-            if (spawnName) spawns[spawnName] = coords;
+        const specCoords = parseCoords(map.querySelector('.specCoords').value);
+
+        const diamondGens = parseMultipleCoords(map.querySelector('.diamondGens').value);
+        const emeraldGens = parseMultipleCoords(map.querySelector('.emeraldGens').value);
+
+        const teams = [];
+        map.querySelectorAll('.teamsContainer > .box').forEach(team => {
+            const name = team.querySelector('.teamName').value.trim();
+            if(!name) return;
+
+            const spawn_point = parseCoords(team.querySelector('.teamSpawn').value);
+            const bed = {
+                top: parseCoords(team.querySelector('.bedTop').value),
+                bottom: parseCoords(team.querySelector('.bedBottom').value)
+            };
+            const generator = parseCoords(team.querySelector('.teamGen').value);
+            const shop_positions = parseMultipleCoords(team.querySelector('.shopPos').value);
+            const upgrade_positions = parseMultipleCoords(team.querySelector('.upgradePos').value);
+
+            teams.push({name, spawn_point, bed, generator, shop_positions, upgrade_positions});
         });
 
-        if (Object.keys(spawns).length > 0) {
-            result[mapName] = spawns;
-        }
+        result[mapName] = {
+            spectator_spawn: specCoords,
+            generators: {
+                diamond: diamondGens,
+                emerald: emeraldGens
+            },
+            teams: teams
+        };
     });
 
     document.getElementById('output').value = JSON.stringify(result, null, 2);
 }
 
-// Initialize first spawn point
-addSpawnPoint();
+// Initialize first map
+addMap();
 </script>
 
 </body>
