@@ -3,14 +3,43 @@
 <head>
     <title>Bedwars Map JSON Generator</title>
     <style>
-        body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f5; }
-        h2 { margin-top: 40px; }
-        .box { background: white; padding: 15px; margin-bottom: 15px; border-radius: 6px; }
-        label { display: block; margin-top: 5px; }
-        input { padding: 5px; margin-bottom: 5px; width: 250px; }
-        button { margin-top: 10px; padding: 6px 10px; cursor: pointer; }
-        textarea { width: 100%; height: 500px; font-family: monospace; }
-        hr { margin: 20px 0; }
+        body { 
+            font-family: Arial, sans-serif; 
+            padding: 20px; 
+            background: #1e1e1e; 
+            color: white; 
+        }
+        h1, h2, h3, h4 { color: #f5f5f5; margin-top: 20px; }
+        .box { 
+            background: #2e2e2e; 
+            padding: 15px; 
+            margin-bottom: 25px; 
+            border-radius: 6px; 
+        }
+        label { display: block; margin-top: 10px; }
+        input, textarea { 
+            padding: 7px; 
+            margin-top: 5px; 
+            width: 100%; 
+            background: #1e1e1e; 
+            color: white; 
+            border: 1px solid #555; 
+            border-radius: 4px; 
+        }
+        button { 
+            margin-top: 15px; 
+            margin-bottom: 20px;
+            padding: 8px 14px; 
+            cursor: pointer; 
+            background: #444; 
+            color: white; 
+            border: none; 
+            border-radius: 4px; 
+        }
+        button:hover { background: #666; }
+
+        .genList div, .shopList div, .upgradeList div { margin-bottom: 10px; }
+        .mapContainer > .box, .teamsContainer > .box { margin-bottom: 25px; }
     </style>
 </head>
 <body>
@@ -19,11 +48,12 @@
 
 <div class="mapContainer"></div>
 <button onclick="addMap()">+ Add Map</button>
+
 <br><br>
 <button onclick="generateJSON()">Generate JSON</button>
 
-<h2>Generated JSON</h2>
-<textarea id="output"></textarea>
+<h2 id="jsonTitle" style="display:none;">Generated JSON</h2>
+<textarea id="output" style="display:none;" readonly></textarea>
 
 <script>
 const container = document.querySelector('.mapContainer');
@@ -39,16 +69,52 @@ function addMap() {
         <input class="specCoords" placeholder="X Y Z" />
 
         <h3>Generators</h3>
-        <label>Diamond Gens (comma separated, X Y Z per line):</label>
-        <textarea class="diamondGens" placeholder="298 93 210&#10;174 93 210"></textarea>
-        <label>Emerald Gens (comma separated, X Y Z per line):</label>
-        <textarea class="emeraldGens" placeholder="236 93 258&#10;236 92 293"></textarea>
+        <div style="margin-bottom:15px;">
+            <strong>Diamond Generators</strong>
+            <div class="diamondGens genList"></div>
+            <button onclick="addGenInput(this, 'diamond')">+ Add Diamond Generator</button>
+        </div>
+        <div style="margin-top:15px;">
+            <strong>Emerald Generators</strong>
+            <div class="emeraldGens genList"></div>
+            <button onclick="addGenInput(this, 'emerald')">+ Add Emerald Generator</button>
+        </div>
 
         <h3>Teams</h3>
         <div class="teamsContainer"></div>
         <button onclick="addTeam(this)">+ Add Team</button>
     `;
     container.appendChild(box);
+
+    addGenInput(box.querySelector('.diamondGens'), 'diamond');
+    addGenInput(box.querySelector('.emeraldGens'), 'emerald');
+}
+
+function addGenInput(btnOrContainer, type) {
+    let container;
+    if (btnOrContainer.tagName === 'BUTTON') {
+        container = btnOrContainer.previousElementSibling;
+    } else {
+        container = btnOrContainer;
+    }
+
+    const count = container.children.length + 1;
+    const div = document.createElement('div');
+    div.innerHTML = `<input placeholder="${type.charAt(0).toUpperCase() + type.slice(1)} Generator ${count} (X Y Z)" />`;
+    const input = div.querySelector('input');
+
+    input.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            const val = input.value.trim();
+            if (val) {
+                input.disabled = true;
+                input.value = `${type.charAt(0).toUpperCase() + type.slice(1)} Generator ${count}: ${val}`;
+                addGenInput(container, type);
+            }
+        }
+    });
+
+    container.appendChild(div);
 }
 
 function addTeam(btn) {
@@ -62,21 +128,66 @@ function addTeam(btn) {
         <label>Spawn Point (X Y Z):</label>
         <input class="teamSpawn" placeholder="0 64 0" />
 
-        <label>Bed Top (X Y Z):</label>
-        <input class="bedTop" placeholder="0 64 0" />
-        <label>Bed Bottom (X Y Z):</label>
-        <input class="bedBottom" placeholder="0 63 0" />
+        <label>Bed Position (X Y Z):</label>
+        <input class="bedPos" placeholder="0 64 0" />
 
         <label>Team Generator (X Y Z):</label>
         <input class="teamGen" placeholder="0 64 0" />
 
-        <label>Shop Positions (X Y Z per line):</label>
-        <textarea class="shopPos" placeholder="0 64 0&#10;1 64 0"></textarea>
+        <h4>Shop Positions</h4>
+        <div class="shopList"></div>
+        <button onclick="addShopInput(this)">+ Add Shop Position</button>
 
-        <label>Upgrade Positions (X Y Z per line):</label>
-        <textarea class="upgradePos" placeholder="0 64 0&#10;1 64 0"></textarea>
+        <h4>Upgrade Positions</h4>
+        <div class="upgradeList"></div>
+        <button onclick="addUpgradeInput(this)">+ Add Upgrade Position</button>
     `;
     containerDiv.appendChild(div);
+
+    addShopInput(div.querySelector('.shopList'));
+    addUpgradeInput(div.querySelector('.upgradeList'));
+}
+
+function addShopInput(btnOrContainer) {
+    let container = btnOrContainer.tagName === 'BUTTON' ? btnOrContainer.previousElementSibling : btnOrContainer;
+    const count = container.children.length + 1;
+    const div = document.createElement('div');
+    div.innerHTML = `<input placeholder="Shop ${count} (X Y Z)" />`;
+    const input = div.querySelector('input');
+
+    input.addEventListener('keydown', function(e) {
+        if(e.key === 'Enter') {
+            const val = input.value.trim();
+            if(val) {
+                input.disabled = true;
+                input.value = `Shop ${count}: ${val}`;
+                addShopInput(container);
+            }
+        }
+    });
+
+    container.appendChild(div);
+}
+
+function addUpgradeInput(btnOrContainer) {
+    let container = btnOrContainer.tagName === 'BUTTON' ? btnOrContainer.previousElementSibling : btnOrContainer;
+    const count = container.children.length + 1;
+    const div = document.createElement('div');
+    div.innerHTML = `<input placeholder="Upgrade ${count} (X Y Z)" />`;
+    const input = div.querySelector('input');
+
+    input.addEventListener('keydown', function(e) {
+        if(e.key === 'Enter') {
+            const val = input.value.trim();
+            if(val) {
+                input.disabled = true;
+                input.value = `Upgrade ${count}: ${val}`;
+                addUpgradeInput(container);
+            }
+        }
+    });
+
+    container.appendChild(div);
 }
 
 function parseCoords(str) {
@@ -84,9 +195,13 @@ function parseCoords(str) {
     return { x: parts[0]||0, y: parts[1]||0, z: parts[2]||0 };
 }
 
-function parseMultipleCoords(str) {
-    const lines = str.trim().split('\n');
-    return lines.map(line => parseCoords(line));
+function parseMultipleCoords(list) {
+    const result = [];
+    list.querySelectorAll('input').forEach(input => {
+        const val = input.value.split(':')[1];
+        if(val) result.push(parseCoords(val));
+    });
+    return result;
 }
 
 function generateJSON() {
@@ -99,8 +214,8 @@ function generateJSON() {
 
         const specCoords = parseCoords(map.querySelector('.specCoords').value);
 
-        const diamondGens = parseMultipleCoords(map.querySelector('.diamondGens').value);
-        const emeraldGens = parseMultipleCoords(map.querySelector('.emeraldGens').value);
+        const diamondGens = parseMultipleCoords(map.querySelector('.diamondGens'));
+        const emeraldGens = parseMultipleCoords(map.querySelector('.emeraldGens'));
 
         const teams = [];
         map.querySelectorAll('.teamsContainer > .box').forEach(team => {
@@ -108,31 +223,28 @@ function generateJSON() {
             if(!name) return;
 
             const spawn_point = parseCoords(team.querySelector('.teamSpawn').value);
-            const bed = {
-                top: parseCoords(team.querySelector('.bedTop').value),
-                bottom: parseCoords(team.querySelector('.bedBottom').value)
-            };
+            const bed = parseCoords(team.querySelector('.bedPos').value);
             const generator = parseCoords(team.querySelector('.teamGen').value);
-            const shop_positions = parseMultipleCoords(team.querySelector('.shopPos').value);
-            const upgrade_positions = parseMultipleCoords(team.querySelector('.upgradePos').value);
+
+            const shop_positions = parseMultipleCoords(team.querySelector('.shopList'));
+            const upgrade_positions = parseMultipleCoords(team.querySelector('.upgradeList'));
 
             teams.push({name, spawn_point, bed, generator, shop_positions, upgrade_positions});
         });
 
         result[mapName] = {
             spectator_spawn: specCoords,
-            generators: {
-                diamond: diamondGens,
-                emerald: emeraldGens
-            },
+            generators: { diamond: diamondGens, emerald: emeraldGens },
             teams: teams
         };
     });
 
+    document.getElementById('output').style.display = 'block';
+    document.getElementById('jsonTitle').style.display = 'block';
     document.getElementById('output').value = JSON.stringify(result, null, 2);
 }
 
-// Initialize first map
+// Initialize page with one map
 addMap();
 </script>
 
