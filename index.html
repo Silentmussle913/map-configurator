@@ -1,165 +1,264 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Bedwars JSON Converter</title>
+    <meta charset="utf-8" />
+    <title>Bedwars JSON Converter (map-name keys)</title>
     <style>
         body {
             font-family: Arial, sans-serif;
-            background: #1e1e1e;
-            color: white;
+            background: #111214;
+            color: #eee;
+            margin: 0;
             padding: 20px;
+            box-sizing: border-box;
             display: flex;
             gap: 20px;
+            height: 100vh;
         }
-
         .left, .right {
-            width: 50%;
+            flex: 1 1 0;
+            overflow: auto;
         }
-
         .box {
-            background: #2e2e2e;
-            padding: 15px;
-            border-radius: 6px;
-            margin-bottom: 20px;
+            background: #1b1b1d;
+            border: 1px solid #2f2f31;
+            padding: 14px;
+            border-radius: 8px;
+            margin-bottom: 16px;
         }
-
-        input, textarea {
+        h1,h2,h3 { margin: 0 0 10px 0; color: #fff; }
+        label { display:block; margin-top:10px; color: #ddd; font-size: 13px; }
+        input[type="file"] { color: #ddd; }
+        input[type="text"], textarea {
             width: 100%;
-            background: #1e1e1e;
-            border: 1px solid #555;
-            color: white;
             padding: 8px;
-            border-radius: 4px;
-            margin-top: 6px;
+            background: #0f0f10;
+            color: #fff;
+            border: 1px solid #333;
+            border-radius: 6px;
+            box-sizing: border-box;
+            margin-top:6px;
+            font-family: monospace;
         }
-
+        textarea { min-height: 520px; resize: vertical; }
         button {
-            margin-top: 15px;
-            padding: 8px 14px;
-            background: #444;
-            border: none;
+            margin-top: 12px;
+            padding: 8px 12px;
+            background: #2b6fd6;
             color: white;
+            border: none;
+            border-radius: 6px;
             cursor: pointer;
-            border-radius: 4px;
         }
-
-        button:hover {
-            background: #666;
-        }
-
-        #output {
-            height: 600px;
-            display: none;
-        }
-
-        #downloadBtn {
-            display: none;
-        }
+        button.secondary { background: #444; margin-left:8px; }
+        .muted { color:#9aa0a6; font-size:13px; margin-top:6px; display:block; }
+        pre { white-space: pre-wrap; word-break: break-word; font-family: monospace; }
+        .note { font-size:13px; color:#a9b1b8; margin-top:8px; }
     </style>
 </head>
 <body>
 
 <div class="left">
-    <h1>Bedwars Map JSON Converter</h1>
+    <div class="box">
+        <h1>Bedwars JSON Converter</h1>
+        <p class="note">Upload your old <code>maps.json</code> (numeric keys or named). Converter will:</p>
+        <ul class="note">
+            <li>Use each map's <code>name</code> as the output key (fallback to original key)</li>
+            <li>Keep global <code>shop_positions</code> &amp; <code>upgrade_positions</code></li>
+            <li>Remove shop/upgrade arrays from inside each team</li>
+            <li>Keep order: spectator_spawn → generators → shop_positions → upgrade_positions → teams</li>
+        </ul>
+
+        <label>Select file</label>
+        <input id="fileInput" type="file" accept=".json" />
+
+        <div style="margin-top:10px;">
+            <button onclick="loadFile()">Load & Convert</button>
+            <button class="secondary" onclick="clearOutput()">Clear</button>
+        </div>
+
+        <div class="note" id="status">Status: waiting for file...</div>
+    </div>
 
     <div class="box">
-        <h3>Upload Old maps.json</h3>
-        <input type="file" id="fileInput" accept=".json">
-        <button onclick="loadFile()">Load & Convert</button>
+        <h3>Preview / Quick Edits</h3>
+        <label>Converted JSON (you can edit before download)</label>
+        <textarea id="editable" placeholder="Converted JSON will appear here after conversion..." style="min-height:140px;"></textarea>
+        <div style="margin-top:10px;">
+            <button onclick="applyEditable()">Apply Edits</button>
+            <button class="secondary" onclick="downloadEditable()">Download Edited JSON</button>
+        </div>
+        <div class="note">Tip: make small edits in the box then click "Apply Edits" to refresh the formatted output on the right.</div>
     </div>
 </div>
 
 <div class="right">
-    <h2 id="jsonTitle" style="display:none;">Converted JSON</h2>
-    <textarea id="output" readonly></textarea>
-    <button id="downloadBtn" onclick="downloadJSON()">Download New maps.json</button>
+    <div class="box">
+        <h2 id="jsonTitle" style="display:none;">Converted maps.json</h2>
+        <textarea id="output" readonly style="display:none;"></textarea>
+        <pre id="pretty" style="display:block; white-space:pre-wrap; background:#0b0b0b; padding:12px; border-radius:6px; min-height:520px;"></pre>
+        <div style="margin-top:12px;">
+            <button id="downloadBtn" onclick="downloadJSON()" style="display:none">Download Converted maps.json</button>
+        </div>
+    </div>
 </div>
 
 <script>
-function loadFile() {
-    const file = document.getElementById('fileInput').files[0];
-    if (!file) return alert("Select a file first!");
+/* Helper: safe get list - accepts null/undefined and returns [] */
+function safeList(arr) {
+    if (!arr) return [];
+    if (!Array.isArray(arr)) return [];
+    return arr;
+}
 
+/* Convert one old-map object to new map object with required order and fields.
+   Removes extra fields and strips team shop/upgrade arrays.
+   Accepts potential spellings: upgrade_positions / upgrades_positions
+*/
+function convertSingleMap(oldMap) {
+    const newMap = {};
+
+    // spectator_spawn: old uses 'spectator_spawn_position' or 'spectator_spawn'
+    const sp = oldMap.spectator_spawn_position || oldMap.spectator_spawn || { x: 0, y: 0, z: 0 };
+    newMap.spectator_spawn = {
+        x: Number(sp.x || 0),
+        y: Number(sp.y || 0),
+        z: Number(sp.z || 0)
+    };
+
+    // generators: diamond & emerald (if present)
+    const gens = oldMap.generators || {};
+    newMap.generators = {
+        diamond: safeList(gens.diamond).map(c => ({ x: Number(c.x||0), y: Number(c.y||0), z: Number(c.z||0) })),
+        emerald: safeList(gens.emerald).map(c => ({ x: Number(c.x||0), y: Number(c.y||0), z: Number(c.z||0) }))
+    };
+
+    // shop_positions (global)
+    newMap.shop_positions = safeList(oldMap.shop_positions || []);
+
+    // upgrade_positions (global) - accept both keys
+    newMap.upgrade_positions = safeList(oldMap.upgrade_positions || oldMap.upgrades_positions || []);
+
+    // teams: only include name, spawn_point, bed, generator
+    newMap.teams = [];
+    if (Array.isArray(oldMap.teams)) {
+        for (const t of oldMap.teams) {
+            const team = {
+                name: t.name || "Team",
+                spawn_point: (t.spawn_point) ? { x: Number(t.spawn_point.x||0), y: Number(t.spawn_point.y||0), z: Number(t.spawn_point.z||0) } : { x:0,y:0,z:0 },
+                bed: (t.bed) ? { x: Number(t.bed.x||0), y: Number(t.bed.y||0), z: Number(t.bed.z||0) } : { x:0,y:0,z:0 },
+                generator: (t.generator) ? { x: Number(t.generator.x||0), y: Number(t.generator.y||0), z: Number(t.generator.z||0) } : { x:0,y:0,z:0 }
+            };
+            // Do NOT include shop_positions or upgrade_positions inside teams (removed)
+            newMap.teams.push(team);
+        }
+    }
+
+    return newMap;
+}
+
+/* Main conversion: accepts oldMaps which may have numeric keys or proper names.
+   For each entry, uses entry.name if available, otherwise uses the key string.
+   Produces an object where each key is the map name.
+*/
+function convertFormat(oldMaps) {
+    const result = {};
+    for (const key in oldMaps) {
+        if (!Object.prototype.hasOwnProperty.call(oldMaps, key)) continue;
+        const entry = oldMaps[key];
+        // Determine output mapName: prefer entry.name (string), else key
+        const mapName = (entry && entry.name) ? String(entry.name) : String(key);
+        result[mapName] = convertSingleMap(entry);
+    }
+    return result;
+}
+
+/* UI: load file and convert */
+function loadFile() {
+    const fi = document.getElementById('fileInput');
+    if (!fi.files || !fi.files[0]) {
+        alert("Select a .json file first.");
+        return;
+    }
+    const file = fi.files[0];
     const reader = new FileReader();
     reader.onload = function(e) {
         try {
-            const oldData = JSON.parse(e.target.result);
-            const newData = convertFormat(oldData);
+            const parsed = JSON.parse(e.target.result);
+            const converted = convertFormat(parsed);
+            const pretty = JSON.stringify(converted, null, 2);
 
-            const jsonOutput = JSON.stringify(newData, null, 2);
-            document.getElementById("output").style.display = "block";
-            document.getElementById("downloadBtn").style.display = "block";
-            document.getElementById("jsonTitle").style.display = "block";
-            document.getElementById("output").value = jsonOutput;
-
+            // show in UI
+            document.getElementById('output').value = pretty;
+            document.getElementById('output').style.display = 'block';
+            document.getElementById('pretty').textContent = pretty;
+            document.getElementById('jsonTitle').style.display = 'block';
+            document.getElementById('downloadBtn').style.display = 'inline-block';
+            document.getElementById('editable').value = pretty;
+            document.getElementById('status').textContent = 'Status: converted successfully.';
         } catch (err) {
-            alert("Invalid JSON file!");
+            console.error(err);
+            alert("Failed to parse JSON: " + err.message);
+            document.getElementById('status').textContent = 'Status: parse error.';
         }
     };
     reader.readAsText(file);
 }
 
-function convertFormat(oldMaps) {
-    const result = {};
-
-    for (const mapName in oldMaps) {
-        const map = oldMaps[mapName];
-
-        // NEW FORMAT
-        result[mapName] = {
-            spectator_spawn: parseCoords(map.spectator_spawn),
-            generators: {
-                diamond: parseList(map.generators?.diamond),
-                emerald: parseList(map.generators?.emerald)
-            },
-            shop_positions: parseList(map.shop_positions || []),
-            upgrade_positions: parseList(map.upgrade_positions || []),
-            teams: []
-        };
-
-        // Convert teams
-        if (Array.isArray(map.teams)) {
-            for (const t of map.teams) {
-                result[mapName].teams.push({
-                    name: t.name,
-                    spawn_point: parseCoords(t.spawn_point),
-                    bed: parseCoords(t.bed),
-                    generator: parseCoords(t.generator),
-                    shop_positions: parseList(t.shop_positions),
-                    upgrade_positions: parseList(t.upgrade_positions)
-                });
-            }
-        }
-    }
-
-    return result;
-}
-
-function parseCoords(obj) {
-    if (!obj) return { x: 0, y: 0, z: 0 };
-    return {
-        x: Number(obj.x || 0),
-        y: Number(obj.y || 0),
-        z: Number(obj.z || 0)
-    };
-}
-
-function parseList(list) {
-    if (!Array.isArray(list)) return [];
-    return list.map(p => parseCoords(p));
-}
-
+/* Download converted json from output textarea */
 function downloadJSON() {
-    const text = document.getElementById("output").value;
+    const text = document.getElementById('output').value;
+    if (!text) { alert("Nothing to download"); return; }
     const blob = new Blob([text], { type: "application/json" });
     const url = URL.createObjectURL(blob);
-
-    const a = document.createElement("a");
+    const a = document.createElement('a');
     a.href = url;
     a.download = "maps.json";
     a.click();
-
     URL.revokeObjectURL(url);
+}
+
+/* Editable textarea: apply edits back to output & preview */
+function applyEditable() {
+    const txt = document.getElementById('editable').value;
+    try {
+        const parsed = JSON.parse(txt);
+        const pretty = JSON.stringify(parsed, null, 2);
+        document.getElementById('output').value = pretty;
+        document.getElementById('pretty').textContent = pretty;
+        document.getElementById('status').textContent = 'Status: applied edits.';
+        document.getElementById('jsonTitle').style.display = 'block';
+        document.getElementById('downloadBtn').style.display = 'inline-block';
+    } catch (err) {
+        alert("Edited JSON is invalid: " + err.message);
+        document.getElementById('status').textContent = 'Status: invalid edited JSON.';
+    }
+}
+
+function downloadEditable() {
+    const txt = document.getElementById('editable').value;
+    try {
+        JSON.parse(txt); // validate
+        const blob = new Blob([txt], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = "maps_edited.json";
+        a.click();
+        URL.revokeObjectURL(url);
+    } catch (err) {
+        alert("Edited JSON is invalid: " + err.message);
+    }
+}
+
+function clearOutput() {
+    document.getElementById('fileInput').value = "";
+    document.getElementById('output').value = "";
+    document.getElementById('pretty').textContent = "";
+    document.getElementById('editable').value = "";
+    document.getElementById('downloadBtn').style.display = 'none';
+    document.getElementById('jsonTitle').style.display = 'none';
+    document.getElementById('status').textContent = 'Status: cleared.';
 }
 </script>
 
