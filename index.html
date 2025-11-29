@@ -1,251 +1,166 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Bedwars Map JSON Generator</title>
+    <title>Bedwars JSON Converter</title>
     <style>
-        body { 
-            font-family: Arial, sans-serif; 
-            padding: 20px; 
-            background: #1e1e1e; 
-            color: white; 
+        body {
+            font-family: Arial, sans-serif;
+            background: #1e1e1e;
+            color: white;
+            padding: 20px;
+            display: flex;
+            gap: 20px;
         }
-        h1, h2, h3, h4 { color: #f5f5f5; margin-top: 20px; }
-        .box { 
-            background: #2e2e2e; 
-            padding: 15px; 
-            margin-bottom: 25px; 
-            border-radius: 6px; 
-        }
-        label { display: block; margin-top: 10px; }
-        input, textarea { 
-            padding: 7px; 
-            margin-top: 5px; 
-            width: 100%; 
-            background: #1e1e1e; 
-            color: white; 
-            border: 1px solid #555; 
-            border-radius: 4px; 
-        }
-        button { 
-            margin-top: 15px; 
-            margin-bottom: 20px;
-            padding: 8px 14px; 
-            cursor: pointer; 
-            background: #444; 
-            color: white; 
-            border: none; 
-            border-radius: 4px; 
-        }
-        button:hover { background: #666; }
 
-        .genList div, .shopList div, .upgradeList div { margin-bottom: 10px; }
-        .mapContainer > .box, .teamsContainer > .box { margin-bottom: 25px; }
+        .left, .right {
+            width: 50%;
+        }
+
+        .box {
+            background: #2e2e2e;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+
+        input, textarea {
+            width: 100%;
+            background: #1e1e1e;
+            border: 1px solid #555;
+            color: white;
+            padding: 8px;
+            border-radius: 4px;
+            margin-top: 6px;
+        }
+
+        button {
+            margin-top: 15px;
+            padding: 8px 14px;
+            background: #444;
+            border: none;
+            color: white;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+
+        button:hover {
+            background: #666;
+        }
+
+        #output {
+            height: 600px;
+            display: none;
+        }
+
+        #downloadBtn {
+            display: none;
+        }
     </style>
 </head>
 <body>
 
-<h1>Bedwars Map JSON Generator</h1>
+<div class="left">
+    <h1>Bedwars Map JSON Converter</h1>
 
-<div class="mapContainer"></div>
-<button onclick="addMap()">+ Add Map</button>
+    <div class="box">
+        <h3>Upload Old maps.json</h3>
+        <input type="file" id="fileInput" accept=".json">
+        <button onclick="loadFile()">Load & Convert</button>
+    </div>
+</div>
 
-<br><br>
-<button onclick="generateJSON()">Generate JSON</button>
-
-<h2 id="jsonTitle" style="display:none;">Generated JSON</h2>
-<textarea id="output" style="display:none;" readonly></textarea>
+<div class="right">
+    <h2 id="jsonTitle" style="display:none;">Converted JSON</h2>
+    <textarea id="output" readonly></textarea>
+    <button id="downloadBtn" onclick="downloadJSON()">Download New maps.json</button>
+</div>
 
 <script>
-const container = document.querySelector('.mapContainer');
+function loadFile() {
+    const file = document.getElementById('fileInput').files[0];
+    if (!file) return alert("Select a file first!");
 
-function addMap() {
-    const box = document.createElement('div');
-    box.className = 'box';
-    box.innerHTML = `
-        <label>Map Name:</label>
-        <input class="mapName" placeholder="tramble3v3" />
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const oldData = JSON.parse(e.target.result);
+            const newData = convertFormat(oldData);
 
-        <h3>Spectator Spawn</h3>
-        <input class="specCoords" placeholder="X Y Z" />
+            const jsonOutput = JSON.stringify(newData, null, 2);
+            document.getElementById("output").style.display = "block";
+            document.getElementById("downloadBtn").style.display = "block";
+            document.getElementById("jsonTitle").style.display = "block";
+            document.getElementById("output").value = jsonOutput;
 
-        <h3>Generators</h3>
-        <div style="margin-bottom:15px;">
-            <strong>Diamond Generators</strong>
-            <div class="diamondGens genList"></div>
-            <button onclick="addGenInput(this, 'diamond')">+ Add Diamond Generator</button>
-        </div>
-        <div style="margin-top:15px;">
-            <strong>Emerald Generators</strong>
-            <div class="emeraldGens genList"></div>
-            <button onclick="addGenInput(this, 'emerald')">+ Add Emerald Generator</button>
-        </div>
-
-        <h3>Teams</h3>
-        <div class="teamsContainer"></div>
-        <button onclick="addTeam(this)">+ Add Team</button>
-    `;
-    container.appendChild(box);
-
-    addGenInput(box.querySelector('.diamondGens'), 'diamond');
-    addGenInput(box.querySelector('.emeraldGens'), 'emerald');
+        } catch (err) {
+            alert("Invalid JSON file!");
+        }
+    };
+    reader.readAsText(file);
 }
 
-function addGenInput(btnOrContainer, type) {
-    let container;
-    if (btnOrContainer.tagName === 'BUTTON') {
-        container = btnOrContainer.previousElementSibling;
-    } else {
-        container = btnOrContainer;
+function convertFormat(oldMaps) {
+    const result = {};
+
+    for (const mapName in oldMaps) {
+        const map = oldMaps[mapName];
+
+        // NEW FORMAT
+        result[mapName] = {
+            spectator_spawn: parseCoords(map.spectator_spawn),
+            generators: {
+                diamond: parseList(map.generators?.diamond),
+                emerald: parseList(map.generators?.emerald)
+            },
+            shop_positions: parseList(map.shop_positions || []),
+            upgrade_positions: parseList(map.upgrade_positions || []),
+            teams: []
+        };
+
+        // Convert teams
+        if (Array.isArray(map.teams)) {
+            for (const t of map.teams) {
+                result[mapName].teams.push({
+                    name: t.name,
+                    spawn_point: parseCoords(t.spawn_point),
+                    bed: parseCoords(t.bed),
+                    generator: parseCoords(t.generator),
+                    shop_positions: parseList(t.shop_positions),
+                    upgrade_positions: parseList(t.upgrade_positions)
+                });
+            }
+        }
     }
 
-    const count = container.children.length + 1;
-    const div = document.createElement('div');
-    div.innerHTML = `<input placeholder="${type.charAt(0).toUpperCase() + type.slice(1)} Generator ${count} (X Y Z)" />`;
-    const input = div.querySelector('input');
-
-    input.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') {
-            const val = input.value.trim();
-            if (val) {
-                input.disabled = true;
-                input.value = `${type.charAt(0).toUpperCase() + type.slice(1)} Generator ${count}: ${val}`;
-                addGenInput(container, type);
-            }
-        }
-    });
-
-    container.appendChild(div);
-}
-
-function addTeam(btn) {
-    const containerDiv = btn.parentElement.querySelector('.teamsContainer');
-    const div = document.createElement('div');
-    div.className = 'box';
-    div.innerHTML = `
-        <label>Team Name:</label>
-        <input class="teamName" placeholder="Red" />
-
-        <label>Spawn Point (X Y Z):</label>
-        <input class="teamSpawn" placeholder="0 64 0" />
-
-        <label>Bed Position (X Y Z):</label>
-        <input class="bedPos" placeholder="0 64 0" />
-
-        <label>Team Generator (X Y Z):</label>
-        <input class="teamGen" placeholder="0 64 0" />
-
-        <h4>Shop Positions</h4>
-        <div class="shopList"></div>
-        <button onclick="addShopInput(this)">+ Add Shop Position</button>
-
-        <h4>Upgrade Positions</h4>
-        <div class="upgradeList"></div>
-        <button onclick="addUpgradeInput(this)">+ Add Upgrade Position</button>
-    `;
-    containerDiv.appendChild(div);
-
-    addShopInput(div.querySelector('.shopList'));
-    addUpgradeInput(div.querySelector('.upgradeList'));
-}
-
-function addShopInput(btnOrContainer) {
-    let container = btnOrContainer.tagName === 'BUTTON' ? btnOrContainer.previousElementSibling : btnOrContainer;
-    const count = container.children.length + 1;
-    const div = document.createElement('div');
-    div.innerHTML = `<input placeholder="Shop ${count} (X Y Z)" />`;
-    const input = div.querySelector('input');
-
-    input.addEventListener('keydown', function(e) {
-        if(e.key === 'Enter') {
-            const val = input.value.trim();
-            if(val) {
-                input.disabled = true;
-                input.value = `Shop ${count}: ${val}`;
-                addShopInput(container);
-            }
-        }
-    });
-
-    container.appendChild(div);
-}
-
-function addUpgradeInput(btnOrContainer) {
-    let container = btnOrContainer.tagName === 'BUTTON' ? btnOrContainer.previousElementSibling : btnOrContainer;
-    const count = container.children.length + 1;
-    const div = document.createElement('div');
-    div.innerHTML = `<input placeholder="Upgrade ${count} (X Y Z)" />`;
-    const input = div.querySelector('input');
-
-    input.addEventListener('keydown', function(e) {
-        if(e.key === 'Enter') {
-            const val = input.value.trim();
-            if(val) {
-                input.disabled = true;
-                input.value = `Upgrade ${count}: ${val}`;
-                addUpgradeInput(container);
-            }
-        }
-    });
-
-    container.appendChild(div);
-}
-
-function parseCoords(str) {
-    const parts = str.trim().split(/\s+/).map(Number);
-    return { x: parts[0]||0, y: parts[1]||0, z: parts[2]||0 };
-}
-
-function parseMultipleCoords(list) {
-    const result = [];
-    list.querySelectorAll('input').forEach(input => {
-        const val = input.value.split(':')[1];
-        if(val) result.push(parseCoords(val));
-    });
     return result;
 }
 
-function generateJSON() {
-    const maps = document.querySelectorAll('.mapContainer > .box');
-    const result = {};
-
-    maps.forEach(map => {
-        const mapName = map.querySelector('.mapName').value.trim();
-        if(!mapName) return;
-
-        const specCoords = parseCoords(map.querySelector('.specCoords').value);
-
-        const diamondGens = parseMultipleCoords(map.querySelector('.diamondGens'));
-        const emeraldGens = parseMultipleCoords(map.querySelector('.emeraldGens'));
-
-        const teams = [];
-        map.querySelectorAll('.teamsContainer > .box').forEach(team => {
-            const name = team.querySelector('.teamName').value.trim();
-            if(!name) return;
-
-            const spawn_point = parseCoords(team.querySelector('.teamSpawn').value);
-            const bed = parseCoords(team.querySelector('.bedPos').value);
-            const generator = parseCoords(team.querySelector('.teamGen').value);
-
-            const shop_positions = parseMultipleCoords(team.querySelector('.shopList'));
-            const upgrade_positions = parseMultipleCoords(team.querySelector('.upgradeList'));
-
-            teams.push({name, spawn_point, bed, generator, shop_positions, upgrade_positions});
-        });
-
-        result[mapName] = {
-            spectator_spawn: specCoords,
-            generators: { diamond: diamondGens, emerald: emeraldGens },
-            teams: teams
-        };
-    });
-
-    document.getElementById('output').style.display = 'block';
-    document.getElementById('jsonTitle').style.display = 'block';
-    document.getElementById('output').value = JSON.stringify(result, null, 2);
+function parseCoords(obj) {
+    if (!obj) return { x: 0, y: 0, z: 0 };
+    return {
+        x: Number(obj.x || 0),
+        y: Number(obj.y || 0),
+        z: Number(obj.z || 0)
+    };
 }
 
-// Initialize page with one map
-addMap();
+function parseList(list) {
+    if (!Array.isArray(list)) return [];
+    return list.map(p => parseCoords(p));
+}
+
+function downloadJSON() {
+    const text = document.getElementById("output").value;
+    const blob = new Blob([text], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "maps.json";
+    a.click();
+
+    URL.revokeObjectURL(url);
+}
 </script>
 
 </body>
